@@ -85,7 +85,8 @@ referrerpolicy="no-referrer"></iframe>
   function mark(on) { MP.installed = on; try { on ? localStorage.setItem('mpInstalled', '1') : localStorage.removeItem('mpInstalled'); } catch (e) {} }
   try { MP.installed = localStorage.getItem('mpInstalled') === '1'; } catch (e) {}
   if (standalone()) mark(true);
-  if (navigator.getInstalledRelatedApps) navigator.getInstalledRelatedApps().then(function (a) { if (a && a.length) { mark(true); appInfo(); } }).catch(function () {});
+  /* Nov 20, 2026: the phone's own answer wins, so removing the app clears a stale "App installed" */
+  if (navigator.getInstalledRelatedApps && !standalone()) navigator.getInstalledRelatedApps().then(function (a) { mark(!!(a && a.length)); appInfo(); }).catch(function () {});
   function appInfo() { send({ mp: 'app', standalone: standalone(), canPrompt: !!MP.bip, ios: ios(), installed: MP.installed }); }
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); MP.bip = e; mark(false); appInfo(); });
   window.addEventListener('appinstalled', function () { MP.bip = null; mark(true); appInfo(); });
@@ -97,7 +98,7 @@ referrerpolicy="no-referrer"></iframe>
         if (c && c.outcome === 'accepted') mark(true);
         send({ mp: 'install-result', outcome: (c && c.outcome) || 'unknown' }); appInfo();
       });
-    } else send({ mp: 'install-help', ios: ios() }); // no one-tap install here: the dashboard shows the how-to
+    } else { if (!standalone()) mark(false); send({ mp: 'install-help', ios: ios() }); appInfo(); } // no one-tap install: show the how-to
   }
 
   /* ---- app: "No connection" screen ---- */
