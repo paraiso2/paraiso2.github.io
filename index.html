@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow, noarchive">
 <meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Mi Paraiso">
 <meta name="application-name" content="Mi Paraiso">
 <title>Mi Paraiso</title>
@@ -15,38 +18,88 @@
 <style>
 html, body { margin: 0; padding: 0; height: 100%; background: #0f172a; overflow: hidden; }
 iframe { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+/* "No connection" screen (same look as offline.html), shown over the dashboard when the connection drops */
+#mpOff { display: none; position: fixed; inset: 0; z-index: 9; background: linear-gradient(180deg,#1e293b,#0f172a); color: #e2e8f0;
+  font: 16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; text-align: center; padding: 40px 24px; box-sizing: border-box; }
+#mpOff.on { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+#mpOff img { width: 96px; height: 96px; border-radius: 22px; box-shadow: 0 6px 18px rgba(0,0,0,.4); margin-bottom: 18px; }
+#mpOff h1 { font-size: 1.35rem; margin: 0 0 6px; }
+#mpOff p { margin: 0 0 4px; color: #94a3b8; max-width: 340px; }
+#mpOff button { margin-top: 18px; padding: 11px 26px; border: 0; border-radius: 24px; background: linear-gradient(90deg,#ff9a3c,#ff5e62); color: #fff; font: 700 1rem system-ui,sans-serif; cursor: pointer; }
 </style>
 </head>
 <body>
-<iframe
+<iframe id="mpFrame"
 src="https://script.google.com/macros/s/AKfycby_J_LoIlEipfRHj1Gcq2OFgjLhZLZg3b-wUCPukDhOA_hLUPUNntW1WHeYYO0GMocpOw/exec"
 title="Mi Paraiso"
 allow="geolocation; clipboard-write; fullscreen"
 referrerpolicy="no-referrer"></iframe>
+<div id="mpOff" role="alert">
+  <img src="icon-192.png" alt="">
+  <h1>No connection · Sin conexión</h1>
+  <p>Mi Paraiso needs the internet. It will reload by itself when you're back online.</p>
+  <p>Mi Paraiso necesita internet. Se recargará solo cuando vuelvas a tener conexión.</p>
+  <button type="button" onclick="location.reload()">Try again · Reintentar</button>
+</div>
 <script>
 /* Neighbor chat helpers (Nov 2026): push notifications, unread count in the tab title, and
-   opening a chat from a notification. The dashboard inside the frame asks for these. */
+   opening a chat from a notification. The dashboard inside the frame asks for these.
+   App (Nov 20, 2026): service worker (offline screen + always-latest), "Get the app" install
+   button support (Android/computer one-tap install, iPhone how-to), and telling the dashboard
+   when it is running as the installed app (so it hides the button). */
 (function () {
   var V = 'https://www.gstatic.com/firebasejs/10.14.1/';
-  var MP = { src: null, cfg: null, chat: new URLSearchParams(location.search).get('chat') };
+  var MP = { src: null, cfg: null, chat: new URLSearchParams(location.search).get('chat'), bip: null, installed: false };
   function send(m) { try { if (MP.src) MP.src.postMessage(m, '*'); } catch (e) {} }
   function load(f, done) { var s = document.createElement('script'); s.src = V + f; s.onload = done; s.onerror = function () { send({ mp: 'push-error' }); }; document.head.appendChild(s); }
   function sdk(done) {
     if (window.firebase && firebase.messaging) return done();
     load('firebase-app-compat.js', function () { load('firebase-messaging-compat.js', done); });
   }
+  function swUrl(cfg) { return 'firebase-messaging-sw.js' + (cfg ? '?c=' + encodeURIComponent(JSON.stringify(cfg)) : ''); }
   function messaging(done) {
     if (!MP.cfg || !('serviceWorker' in navigator) || !('Notification' in window)) return send({ mp: 'push-error' });
     sdk(function () {
       try {
         if (!firebase.apps.length) firebase.initializeApp(MP.cfg);
-        navigator.serviceWorker.register('firebase-messaging-sw.js?c=' + encodeURIComponent(JSON.stringify(MP.cfg)), { scope: './' })
+        try { localStorage.setItem('mpCfg', JSON.stringify(MP.cfg)); } catch (x) {}
+        navigator.serviceWorker.register(swUrl(MP.cfg), { scope: './', updateViaCache: 'none' })
           .then(function (reg) { done(firebase.messaging(), reg); })
           .catch(function () { send({ mp: 'push-error' }); });
       } catch (e) { send({ mp: 'push-error' }); }
     });
   }
   function pushOn() { try { return Notification.permission === 'granted' && localStorage.getItem('mpPush') === '1'; } catch (e) { return false; } }
+
+  /* ---- app: service worker on every visit (one worker does offline + push; keeps push settings when on) ---- */
+  if ('serviceWorker' in navigator) {
+    var savedCfg = null; try { if (pushOn()) savedCfg = JSON.parse(localStorage.getItem('mpCfg') || 'null'); } catch (e) {}
+    navigator.serviceWorker.register(swUrl(savedCfg), { scope: './', updateViaCache: 'none' })
+      .then(function (reg) { try { reg.update(); } catch (e) {} }).catch(function () {});
+  }
+  function standalone() { return (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: minimal-ui)').matches)) || navigator.standalone === true; }
+  function ios() { return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+  function appInfo() { send({ mp: 'app', standalone: standalone(), canPrompt: !!MP.bip, ios: ios(), installed: MP.installed }); }
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); MP.bip = e; appInfo(); });
+  window.addEventListener('appinstalled', function () { MP.bip = null; MP.installed = true; appInfo(); });
+  function install() {
+    if (MP.bip) {
+      var p = MP.bip; MP.bip = null;
+      p.prompt();
+      (p.userChoice || Promise.resolve({})).then(function (c) {
+        if (c && c.outcome === 'accepted') MP.installed = true;
+        send({ mp: 'install-result', outcome: (c && c.outcome) || 'unknown' }); appInfo();
+      });
+    } else send({ mp: 'install-help', ios: ios() }); // no one-tap install here: the dashboard shows the how-to
+  }
+
+  /* ---- app: "No connection" screen ---- */
+  var off = document.getElementById('mpOff');
+  function showOff(on) { off.className = on ? 'on' : ''; }
+  if (navigator.onLine === false) showOff(true);
+  window.addEventListener('offline', function () { showOff(true); });
+  window.addEventListener('online', function () { if (off.className) location.reload(); });
+
   window.addEventListener('message', function (e) {
     var d = e.data;
     if (!d || typeof d !== 'object' || !d.mp || !/\.googleusercontent\.com$/.test(e.origin)) return;
@@ -54,6 +107,10 @@ referrerpolicy="no-referrer"></iframe>
       MP.src = e.source; if (d.cfg) MP.cfg = d.cfg;
       send({ mp: 'wrapper', pushOn: pushOn(), chat: MP.chat }); MP.chat = null;
       if (MP.cfg && pushOn()) messaging(function () {}); // keep the service worker current
+    } else if (d.mp === 'app-hello') {
+      MP.src = MP.src || e.source; appInfo();
+    } else if (d.mp === 'install') {
+      MP.src = MP.src || e.source; install();
     } else if (d.mp === 'title') {
       document.title = (d.n > 0 ? '(' + d.n + ') ' : '') + 'Mi Paraiso';
     } else if (d.mp === 'push-enable') {

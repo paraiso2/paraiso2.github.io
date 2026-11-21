@@ -1,11 +1,15 @@
 {
+  "id": "/",
   "name": "Mi Paraiso",
   "short_name": "Mi Paraiso",
+  "description": "Paraiso II Costa Bonita, Mazatlán: safety ticker, events, weather, nearby places and more.",
+  "lang": "en",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#1e1e1e",
-  "theme_color": "#6a3fb5",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
