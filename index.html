@@ -79,15 +79,22 @@ referrerpolicy="no-referrer"></iframe>
   }
   function standalone() { return (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: minimal-ui)').matches)) || navigator.standalone === true; }
   function ios() { return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+  /* Installed memory (Nov 20, 2026): the browser and the installed app share saved data on Android and
+     computers, so once the app runs (or is installed) this device remembers it and the dashboard can show
+     "App installed" instead of "Get the app". If the browser offers to install again, the app was removed. */
+  function mark(on) { MP.installed = on; try { on ? localStorage.setItem('mpInstalled', '1') : localStorage.removeItem('mpInstalled'); } catch (e) {} }
+  try { MP.installed = localStorage.getItem('mpInstalled') === '1'; } catch (e) {}
+  if (standalone()) mark(true);
+  if (navigator.getInstalledRelatedApps) navigator.getInstalledRelatedApps().then(function (a) { if (a && a.length) { mark(true); appInfo(); } }).catch(function () {});
   function appInfo() { send({ mp: 'app', standalone: standalone(), canPrompt: !!MP.bip, ios: ios(), installed: MP.installed }); }
-  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); MP.bip = e; appInfo(); });
-  window.addEventListener('appinstalled', function () { MP.bip = null; MP.installed = true; appInfo(); });
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); MP.bip = e; mark(false); appInfo(); });
+  window.addEventListener('appinstalled', function () { MP.bip = null; mark(true); appInfo(); });
   function install() {
     if (MP.bip) {
       var p = MP.bip; MP.bip = null;
       p.prompt();
       (p.userChoice || Promise.resolve({})).then(function (c) {
-        if (c && c.outcome === 'accepted') MP.installed = true;
+        if (c && c.outcome === 'accepted') mark(true);
         send({ mp: 'install-result', outcome: (c && c.outcome) || 'unknown' }); appInfo();
       });
     } else send({ mp: 'install-help', ios: ios() }); // no one-tap install here: the dashboard shows the how-to
